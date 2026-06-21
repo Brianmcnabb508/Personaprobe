@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import requests
-import whois
 import sys
 import argparse
 import logging
@@ -10,6 +9,16 @@ import os
 import re
 from urllib.parse import quote_plus
 from datetime import datetime
+
+# Try different whois imports for compatibility
+try:
+    from whois import whois as whois_lookup
+except ImportError:
+    try:
+        import whois
+        whois_lookup = whois.whois
+    except (ImportError, AttributeError):
+        whois_lookup = None
 
 # Configuration
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -69,7 +78,7 @@ def is_valid_username(username):
 def print_banner():
     """Prints a simple banner."""
     print("""
-    ╔══════��════════════════════════╗
+    ╔═══════════════════════════════╗
     ║     PersonaProbe v1.1         ║
     ║    by Superintellect          ║
     ╚═══════════════════════════════╝
@@ -180,8 +189,15 @@ def get_whois_info(target_domain):
     section_header("WHOIS Information")
     print(f"[+] Querying WHOIS for {target_domain}")
     
+    # Check if whois module is available
+    if whois_lookup is None:
+        logger.warning("WHOIS module not available")
+        print("[!] WHOIS module not properly installed")
+        print("[*] Install with: pip install python-whois")
+        return
+    
     try:
-        w = whois.whois(target_domain)
+        w = whois_lookup(target_domain)
         
         # Safely handle all attributes
         whois_data = {
@@ -197,8 +213,10 @@ def get_whois_info(target_domain):
         }
         
         # Print available information
+        found_info = False
         for key, value in whois_data.items():
             if value:
+                found_info = True
                 display_key = key.replace('_', ' ').title()
                 if isinstance(value, (list, tuple)):
                     value_str = ', '.join(str(v) for v in value if v)
@@ -206,14 +224,16 @@ def get_whois_info(target_domain):
                     value_str = str(value)
                 print(f"[*] {display_key}: {value_str}")
         
-        logger.info(f"Successfully retrieved WHOIS for {target_domain}")
+        if not found_info:
+            print("[-] No WHOIS information found")
+            logger.info(f"No WHOIS data available for {target_domain}")
+        else:
+            logger.info(f"Successfully retrieved WHOIS for {target_domain}")
         
-    except whois.parser.PywhoisError as e:
-        logger.warning(f"WHOIS lookup failed for {target_domain}: {e}")
-        print(f"[!] WHOIS lookup failed for {target_domain}")
     except Exception as e:
         logger.error(f"Error retrieving WHOIS for {target_domain}: {e}")
-        print(f"[!] Error retrieving WHOIS for {target_domain}: {e}")
+        print(f"[!] WHOIS lookup unavailable for {target_domain}")
+        print(f"[*] This is normal for some domains (try manual lookup at whois.com)")
 
 
 def search_emails(target_name=None, target_domain=None):
